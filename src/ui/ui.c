@@ -24,6 +24,7 @@
 #include <vsstyle.h>
 #include <vssym32.h>
 #include <wincodec.h>
+#include <shellapi.h>
 
 #include "..\resources\resource.h"
 
@@ -173,9 +174,9 @@ LRESULT CALLBACK CBTProc(int nCode, WPARAM wParam, LPARAM lParam)
 
 DWORD WINAPI CreateMessageBox(LPVOID lpParam) {
 	MsgParam *mp = ((MsgParam*)lpParam);
-	hMsgBoxHook = SetWindowsHookEx(WH_CBT, CBTProc, NULL, GetCurrentThreadId());		
+		hMsgBoxHook = SetWindowsHookEx(WH_CBT, CBTProc, NULL, GetCurrentThreadId());
     mp->result = MessageBoxW(NULL, mp->msg, mp->title, mp->options);
-	UnhookWindowsHookEx(hMsgBoxHook);
+		UnhookWindowsHookEx(hMsgBoxHook);
 	return 0;
 }
 
@@ -327,8 +328,8 @@ LUA_METHOD(ui, remove) {
 		if (w->wtype == UIMenu)
 			FreeMenu(L, w);
 		else if (w->wtype == UIItem) {
-			Widget *parent = (Widget*)GetWindowLongPtr(w->item.itemtype == UITab ? GetParent(w->handle) : w->handle, GWLP_USERDATA);
-			free_item(parent, w->index);
+								Widget *parent = (Widget*)GetWindowLongPtr(w->item.itemtype == UITab ? GetParent(w->handle) : w->handle, GWLP_USERDATA);
+								free_item(parent, w->index);
 		} else if (w->wtype == UIMenuItem)
 			remove_menuitem(L, w, -1);
 		else DestroyWindow(w->handle);
@@ -389,7 +390,7 @@ peek:	if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
 												break;
 						}
 					} else lua_pop(L, 1);					
-				} else if (msg.message == WM_LUAMENU) {			
+				} else if (msg.message == WM_LUAMENU) {
 					int type = 	lua_rawgeti(L, LUA_REGISTRYINDEX, msg.wParam);
 					if (type == LUA_TTABLE && lua_getfield(L, -1, "onClick")) {
 						lua_insert(L, -2);
@@ -506,6 +507,56 @@ LUA_METHOD(ui, fontdialog) {
 		SetFocus(cf.hwndOwner);
 		return 4;
 	}
+	return 1;
+}
+
+LUA_METHOD(ui, notify) {
+	int n = lua_gettop(L);
+	if (n == 5) {
+		size_t len;
+		const char *title = lua_tolstring(L, 1, &len);
+		const char *message = lua_tolstring(L, 2, &len);
+		const char *tip = lua_tolstring(L, 3, &len);
+		const char *appIconFilePath = lua_tolstring(L, 4, &len);
+		lua_Number timeout = (LUAI_UACINT)lua_tointeger(L, 5);
+
+		/*
+		HWND hwnd = CreateWindowExW(
+            # dwExStyle, lpClassName, lpWindowName, dwStyle
+            0, class_atom, '', WS_OVERLAPPED,
+            # x, y, nWidth, nHeight
+            0, 0, CW_USEDEFAULT, CW_USEDEFAULT,
+            # hWndParent, hMenu, hInstance, lpParam
+            None, None, wnd_class_ex.hInstance, None
+        );*/
+
+		NOTIFYICONDATA nid = {0};
+		nid.cbSize = sizeof(nid);
+		nid.hWnd = GetActiveWindow();
+		nid.uID = 0;
+		nid.uVersion = NOTIFYICON_VERSION_4;
+		nid.uFlags = NIF_ICON | NIF_INFO | NIF_TIP;
+		nid.dwInfoFlags = NIIF_LARGE_ICON | NIIF_INFO;
+		
+		// This text will be shown as the icon's tooltip.
+		strcpy(nid.szTip, tip); //L"LuaRT Notification");
+		strcpy(nid.szInfo, message);
+		strcpy(nid.szInfoTitle, title);
+		//StringCchCopy(nid.szInfoTitle, ARRAYSIZE(nid.szInfoTitle), title);
+		
+		// Load the icon for high DPI.
+		//appIconFilePath
+		//LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_SMALL), LIM_SMALL, &(nid.hIcon));
+		
+		// Show the notification.
+		Shell_NotifyIcon(NIM_ADD, &nid) ? S_OK : E_FAIL;
+
+		lua_pushboolean(L, TRUE);
+	}
+	else {
+		lua_pushboolean(L, FALSE);
+	}
+	
 	return 1;
 }
 
@@ -642,6 +693,7 @@ static const luaL_Reg uilib[] = {
 	{"error",			ui_error},
 	{"update",			ui_update},
 	{"remove",			ui_remove},
+	{"notify",          ui_notify},
 	{NULL, NULL}
 };
 
@@ -691,7 +743,7 @@ LUAMOD_API int luaopen_ui(lua_State *L)
 	UIMenuItem = lua_registerobject(L,  NULL, "MenuItem", MenuItem_constructor, MenuItem_methods, MenuItem_metafields);
 	lua_setfield(L, LUA_REGISTRYINDEX, "MenuItem");
 	if (FAILED(CoCreateInstance(&CLSID_WICImagingFactory, NULL, CLSCTX_INPROC_SERVER, &IID_IWICImagingFactory, (LPVOID*)&ui_factory)))
-        luaL_error(L, "Failed to open 'ui' module : WIC Imaging Factory could not be created");	
+        luaL_error(L, "Failed to open 'ui' module : WIC Imaging Factory could not be created");
 	lua_widgetfinalize = Widget_finalize;
 	lua_widgetinitialize = Widget_init;
 	WIDGET_METHODS = Widget_methods;
