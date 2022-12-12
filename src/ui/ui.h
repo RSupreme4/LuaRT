@@ -9,34 +9,18 @@
 #pragma once
 
 #include <luart.h>
+#include <Widget.h>
 #include <window.h>
 #include <windows.h>
 #include <commctrl.h>
 #include <richedit.h>
 #include <wincodec.h>
 
-extern int UIWindow;
-extern int UIButton;
-extern int UIGroup;
-extern int UICheck;
-extern int UIRadio;
-extern int UILabel;
-extern int UIEntry;
-extern int UIPicture;
-extern int UIDate;
-extern int UIMenu;
-extern int UIMenuItem;
-extern int UITab;
-extern int UIList;
-extern int UICombo;
-extern int UITree;
-extern int UIEdit;
-extern int UIItem;
-
 void widget_noinherit(lua_State *L, int *type, char *typename, lua_CFunction constructor, const luaL_Reg *methods, const luaL_Reg *mt);
 void widget_type_new(lua_State *L, int *type, const char *typename, lua_CFunction constructor, const luaL_Reg *methods, const luaL_Reg *mt, BOOL has_text, BOOL has_font, BOOL has_cursor, BOOL has_icon, BOOL has_autosize, BOOL has_textalign, BOOL has_tooltip);
 void *Widget_init(lua_State *L, Widget **wp);
-Widget *Widget_finalize(lua_State *L, HWND h, WidgetType type, Widget *wp, SUBCLASSPROC proc);
+Widget *Widget__constructor(lua_State *L, HWND h, WidgetType type, Widget *wp, SUBCLASSPROC proc);
+Widget *Widget_destructor(lua_State *L);
 
 #define lua_newtype_widget(L, typename) widget_type_new(L, #typename, typename##_constructor, Widget_methods, Widget_metafields, NULL)
 #define lua_newtype_extwidget(L, typename) widget_type_new(L, #typename, typename##_constructor, Widget_methods, Widget_metafields, typename##_methods)
@@ -66,6 +50,7 @@ void add_column(Widget *w);
 int getStyle(Widget *w, const int *values, const char *names[]);
 void copy_menuitems(lua_State *L, HMENU from, HMENU to);
 
+void do_align(Widget *w);
 HBITMAP LoadImg(wchar_t *filename);
 BOOL SaveImg(wchar_t *fname, HBITMAP hBitmap);
 BOOL LoadFont(LPCWSTR file, LPLOGFONTW lf);
@@ -73,6 +58,7 @@ int fontsize_fromheight(int height);
 LOGFONTW *Font(Widget *w);
 void UpdateFont(Widget *w, LOGFONTW *l);
 void SetFontFromWidget(Widget *w, Widget *wp);
+int ProcessUIMessage(Widget *w, UINT uMsg, WPARAM wParam, LPARAM lParam, UINT uIdSubclass);
 
 LUA_METHOD(Widget, __metanewindex); //----- for event registration
 LUA_METHOD(Widget, show);
@@ -145,6 +131,7 @@ extern luaL_Reg MenuItem_methods[];
 extern luaL_Reg MenuItem_metafields[];
 extern luaL_Reg Picture_methods[];
 extern luaL_Reg color_methods[];
+extern luaL_Reg Progressbar_methods[];
 LUA_METHOD(Listbox, sort);
 LUA_METHOD(Item, sort);
 
@@ -170,3 +157,53 @@ LUA_CONSTRUCTOR(Item);
 LUA_CONSTRUCTOR(Menu);
 LUA_CONSTRUCTOR(MenuItem); 
 LUA_METHOD(Widget, __gc);
+
+//--------------------------------------------------| GUI Events
+
+#define	WM_LUAMIN			(WM_USER+2)
+#define WM_LUAHIDE 			(WM_LUAMIN)
+#define WM_LUASHOW 			(WM_LUAMIN + 1)
+#define WM_LUAMOVE 			(WM_LUAMIN + 2)
+#define WM_LUARESIZE 		(WM_LUAMIN + 3)
+#define WM_LUAHOVER 		(WM_LUAMIN + 4)
+#define WM_LUALEAVE 		(WM_LUAMIN + 5)
+#define WM_LUACLOSE 		(WM_LUAMIN + 6)
+#define WM_LUACLICK 		(WM_LUAMIN + 7)
+#define WM_LUADBLCLICK		(WM_LUAMIN + 8)
+#define WM_LUACONTEXT 		(WM_LUAMIN + 9)
+#define WM_LUACREATE	 	(WM_LUAMIN + 10)
+#define WM_LUACARET 		(WM_LUAMIN + 12)
+#define WM_LUACHANGE 		(WM_LUAMIN + 12)
+#define WM_LUASELECT 		(WM_LUAMIN + 13)
+#define WM_LUATRAYCLICK 	(WM_LUAMIN + 14)
+#define WM_LUATRAYDBLCLICK	(WM_LUAMIN + 15)
+#define WM_LUATRAYCONTEXT 	(WM_LUAMIN + 16)
+#define WM_LUATRAYHOVER 	(WM_LUAMIN + 17)
+#define WM_LUAMENU 			(WM_LUAMIN + 18)
+
+typedef enum {
+	onHide			= WM_LUAHIDE,
+    onShow 			= WM_LUASHOW, 
+    onMove 			= WM_LUAMOVE, 
+    onResize		= WM_LUARESIZE,
+    onHover 		= WM_LUAHOVER,
+    onLeave			= WM_LUALEAVE,
+    onClose 		= WM_LUACLOSE,
+    onClick 		= WM_LUACLICK,
+    onDoubleClick 	= WM_LUADBLCLICK,
+    onContext 		= WM_LUACONTEXT,
+    onCreate		= WM_LUACREATE,
+    onCaret 		= WM_LUACARET,
+    onChange 		= WM_LUACHANGE,
+    onSelect 		= WM_LUASELECT,
+    onTrayClick		= WM_LUATRAYCLICK,
+    onTrayDoubleClick=WM_LUATRAYDBLCLICK,
+    onTrayContext 	= WM_LUATRAYCONTEXT,
+    onTrayHover 	= WM_LUATRAYHOVER,
+	onMenu			= WM_LUAMENU
+} WidgetEvent;
+
+//---- call close event a associated with window w
+#define lua_closeevent(w, e) PostMessage(w->handle, WM_LUACLOSE, 0, 0)
+//--- call menu event references in LUA_REGISTRYINDEX with i 
+#define lua_menuevent(i, idx) PostMessage(NULL, WM_LUAMENU, (WPARAM)i, (LPARAM)idx) 

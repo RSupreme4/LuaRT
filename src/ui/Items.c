@@ -7,7 +7,8 @@
 */
 
 #include <luart.h>
-#include "Widget.h"
+#include <Widget.h>
+#include "ui.h"
 #include <Window.h>
 #include <windowsx.h>
 #include <uxtheme.h>
@@ -71,13 +72,19 @@ LRESULT CALLBACK PageProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 			return SendMessage((HWND)lParam, Msg, wParam, lParam);
 		case WM_CONTEXTMENU: 
 		case WM_MOUSEMOVE:
-			lParam = MAKELPARAM(GET_X_LPARAM(lParam), AdjustTab_height(w->handle)+GET_Y_LPARAM(lParam));
+			lParam = MAKELPARAM(GET_X_LPARAM(lParam), AdjustTab_height(w->handle)+GET_Y_LPARAM(lParam));		
 		case WM_MOUSELEAVE:
 			return WidgetProc(hWnd, Msg, 0, lParam, 0, 0);
 		case WM_CTLCOLORBTN:
 		case WM_CTLCOLORSTATIC: 
-			SetBkMode((HDC)wParam, TRANSPARENT);	
-			return (LRESULT)w->brush;
+			if (IsWindowEnabled((HWND)lParam)) {
+				Widget *c = (Widget*)GetWindowLongPtr((HWND)lParam, GWLP_USERDATA);	
+				if (c) {			
+					SetBkMode((HDC)wParam, TRANSPARENT);	
+					SetTextColor((HDC)wParam, c->color);
+					return (LRESULT)(c->brush ?: w->brush);
+				}
+			}
 		default: break;
 	}
 	return DefWindowProc(hWnd, Msg, wParam, lParam);
@@ -226,7 +233,7 @@ tree:	item = calloc(1, sizeof(TVINSERTSTRUCTW));
 		item = calloc(1, sizeof(TCITEMW));
 		RECT r; 
 		GetClientRect(w->handle, &r);
-		hh = CreateWindowExW(0, L"Window", NULL, WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS, 1, 22, r.right-r.left-4, r.bottom-r.top-24, h, NULL, GetModuleHandle(NULL), NULL);
+		hh = CreateWindowExW(0, L"Window", NULL, WS_VISIBLE | WS_CHILD | WS_CLIPSIBLINGS, 1, 26, r.right-r.left-4, r.bottom-r.top-30, h, NULL, GetModuleHandle(NULL), NULL);
 		SetWindowLongPtr(hh, GWLP_WNDPROC, (ULONG_PTR)PageProc);
 		SetWindowLongPtr(hh, GWLP_USERDATA, (ULONG_PTR)w);
 		BringWindowToTop(hh);

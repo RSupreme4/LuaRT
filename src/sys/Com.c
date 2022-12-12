@@ -38,6 +38,7 @@ LUA_CONSTRUCTOR(COM) {
 		} else if ( FAILED(CoCreateInstance(&clsid, 0, CLSCTX_INPROC_SERVER | CLSCTX_LOCAL_SERVER, &IID_IDispatch, (LPVOID*)&obj->this))) {
 			lua_pushfstring(L, "IDispatch interface not implemented by COM object '%s'", lua_tostring(L, 2));		
 error:		free(name);
+			free(obj);
 			lua_error(L);
 		}					
 		free(name);
@@ -145,8 +146,7 @@ static int COM_method_call(lua_State *L) {
 		} else switch(result.vt) {
 			case VT_EMPTY:
 done:		case VT_NULL:		lua_pushnil(L); break;
-			case VT_BSTR:		lua_pushwstring(L, (LPCWSTR)V_BSTR(&result));	
-								SysFreeString(V_BSTR(&result)); break;						
+			case VT_BSTR:		lua_pushwstring(L, (LPCWSTR)V_BSTR(&result)); break;						
 			case VT_BOOL:  		lua_pushboolean(L, result.boolVal); break;
 			case VT_I1:
 			case VT_I2:
@@ -161,19 +161,21 @@ done:		case VT_NULL:		lua_pushnil(L); break;
 			case VT_DISPATCH:	{
 									lua_pushlightuserdata(L, result.pdispVal);
 									lua_pushinstance(L, COM, 1);
-									break;
+									goto cleanup;
 								}
 			case VT_DATE:		{
 									SYSTEMTIME st;
 									VariantTimeToSystemTime(V_DATE(&result), &st);
 									lua_pushlightuserdata(L, &st);
 									lua_pushinstance(L, Datetime, 1);
-									break;
+									goto cleanup;
 								}
-			default: 	luaL_error(L, "COM error : unsupported result type"); 
+			default: 			luaL_error(L, "COM error : unsupported result type"); 
 		}
 	} else
 		lua_pushfstring(L, "COM error : no member '%s' found", lua_tostring(L, lua_upvalueindex(1)));
+	VariantClear(&result);
+cleanup:
 	free(field);
 	while (n--)
 		VariantClear(&params.rgvarg[n]);
@@ -201,32 +203,44 @@ LUA_METHOD(COM, __index) {
 	EXCEPINFO	execpInfo = {0};
 	UINT		puArgErr = 0;
 	VARIANT		result = {0};
+	TYPEATTR	*attr;
+	FUNCDESC	*funcdesc = NULL;
+	BSTR name;
 
 	if (SUCCEEDED(IDispatch_GetIDsOfNames(obj->this, &IID_NULL, &field, 1, 0, &id))) {
-		VariantInit(&result);	
-		LONG value = IDispatch_Invoke(obj->this, id, &IID_NULL, 0, DISPATCH_PROPERTYGET, &params, &result, &execpInfo, &puArgErr);
-		if ( (value == DISP_E_MEMBERNOTFOUND) ) {
-			if ( IDispatch_Invoke(obj->this, id, &IID_NULL, 0, DISPATCH_METHOD, &params, &result, &execpInfo, &puArgErr) == DISP_E_MEMBERNOTFOUND ) {
-				luaL_where(L, 2);
-				luaL_error(L, "%s: COM error : field '%s' not found", lua_tostring(L, -1), lua_tostring(L, 2));
-			} else {
-method:			lua_pushvalue(L, 2);
-				lua_pushinteger(L, DISPATCH_METHOD);
-				lua_pushcclosure(L, COM_method_call, 2);				
+		BOOL found = FALSE;
+		if ( obj->typeinfo && SUCCEEDED(ITypeInfo_GetTypeAttr(obj->typeinfo, &attr))) {
+		UINT count;
+		for (WORD i = 0; i < attr->cFuncs; i++)
+			if ( SUCCEEDED(ITypeInfo_GetFuncDesc(obj->typeinfo, i, &funcdesc)) && SUCCEEDED(ITypeInfo_GetNames(obj->typeinfo, funcdesc->memid, &name, 1, &count)) ) {
+				if ((funcdesc->invkind == INVOKE_FUNC) && (lstrcmpiW(name, field) == 0)) {
+					ITypeInfo_ReleaseFuncDesc(obj->typeinfo, funcdesc);
+					found = TRUE;
+					break;
+				}
+				ITypeInfo_ReleaseFuncDesc(obj->typeinfo, funcdesc);
 			}
-		} else if ((value == DISP_E_BADPARAMCOUNT)) {
+		}
+		ITypeInfo_ReleaseTypeAttr(obj->typeinfo, attr);			
+		if (found)
+			goto method;			
+		LONG value = IDispatch_Invoke(obj->this, id, &IID_NULL, 0, DISPATCH_PROPERTYGET, &params, &result, &execpInfo, &puArgErr);
+		if (value == DISP_E_BADPARAMCOUNT) {
 			lua_pushvalue(L, 2);
 			lua_pushinteger(L, DISPATCH_PROPERTYGET | DISPATCH_METHOD);
 			lua_pushvalue(L, 1);
 			lua_pushcclosure(L, COM_method_call, 3);
-		} else if ((value == DISP_E_EXCEPTION))
-			goto method; 
-		else {
+		} else if (value == 0) {		
+			VariantInit(&result);	
 			lua_pushvalue(L, 2);
 			lua_pushinteger(L, DISPATCH_PROPERTYGET);
 			lua_pushvalue(L, 1);
 			lua_pushcclosure(L, COM_method_call, 3);
 			lua_call(L, 0, 1);
+		} else {
+method:		lua_pushvalue(L, 2);
+			lua_pushinteger(L, DISPATCH_METHOD);
+			lua_pushcclosure(L, COM_method_call, 2);
 		}
 	} else lua_pushnil(L);
 	free(field);
@@ -279,7 +293,7 @@ LUA_METHOD(COM, __tostring) {
 	lua_pushwstring(L, lua_self(L, 1, COM)->name);
 	lua_pushstring(L, ">");
 	lua_concat(L, 3);
-	return 1;
+	return 1; 
 }
 
 LUA_METHOD(COM, __gc) {

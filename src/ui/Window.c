@@ -7,14 +7,26 @@
 */
 
 #include <luart.h>
-#include "Widget.h"
+#include <Widget.h>
+#include "ui.h"
 #include <Window.h>
-
 #include <windowsx.h>
+#include <dwmapi.h>
 
 luart_type TWindow;
 
 static HANDLE hwndPrevious;
+
+BOOL CALLBACK ResizeChilds(HWND h, LPARAM lParam)
+{
+	if (GetParent(h) == (HWND)lParam) {	
+		Widget *w = (Widget*)GetWindowLongPtr(h, GWLP_USERDATA);
+		if (w) {
+			do_align(w);
+		}
+	}
+	return TRUE;
+}
 
 LRESULT CALLBACK WindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {	
 	Widget *w = (Widget*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
@@ -43,9 +55,9 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 										lua_menuevent(((Widget*)mi.dwItemData)->ref, wParam);
 	    							return 0;
 								 }
-								 
 			case WM_WINDOWPOSCHANGING:
 				if (!(((WINDOWPOS*)lParam)->flags & SWP_NOSIZE)) {
+					
 					lua_callevent(w, onResize);
 					return 0;
 				}
@@ -53,14 +65,12 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 			case WM_WINDOWPOSCHANGED:	
 				if (w->status) {
 					RECT r;
-					GetClientRect(w->handle, &r);
+					GetClientRect(hWnd, &r);
 					SendMessage(w->status, WM_SIZE, 0, MAKELPARAM(r.right, r.bottom));
 				}
 				flags = ((WINDOWPOS*)lParam)->flags;
-				if (!(flags & SWP_NOMOVE)) {
+				if (!(flags & SWP_NOMOVE))
 					lua_callevent(w, onMove);
-					return 0;
-				}
 				if (flags & SWP_HIDEWINDOW)
 					lua_callevent(w, onHide);
 				else if (flags & SWP_SHOWWINDOW)
@@ -68,6 +78,7 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 				if (!(flags & SWP_NOSIZE)) {
 					if (w->status)
 						SendMessage(w->status, WM_SIZE, 0, 0);
+					EnumChildWindows(hWnd, ResizeChilds, (LPARAM)hWnd);
 					lua_callevent(w, onResize);
 				}
 				return 0;
@@ -78,6 +89,8 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 					hwndPrevious = hWnd;
 				}
 				lua_paramevent(w, onHover, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+				if (w->status)
+					BringWindowToTop(w->status);
 				return 0;
 			case WM_NOTIFY:
 				if (w->status != ((LPNMHDR)lParam)->hwndFrom)
@@ -98,15 +111,18 @@ LRESULT CALLBACK WindowProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) {
 				return 0;
 			case WM_SIZE: {
 				RECT sbRect;
-				UINT sbheight;
+				UINT sbheight;				
 				if (w->status) {
 					GetWindowRect(w->status, &sbRect);
 					sbheight = sbRect.bottom - sbRect.top;
-					MoveWindow(w->status, 0, HIWORD(lParam)-sbheight, LOWORD(lParam), sbheight, TRUE);
+					SetWindowPos(w->status, HWND_TOP, 0, HIWORD(lParam)-sbheight, LOWORD(lParam), sbheight, SWP_SHOWWINDOW);
 				}
 				lua_callevent(w, onResize);
 				return 0;
              }
+			case WM_SIZING:
+			    EnumChildWindows(hWnd, ResizeChilds, (LPARAM)hWnd);
+				break;
             case WM_SETCURSOR:
 				if (LOWORD(lParam) == HTCLIENT) {
 					POINT p;
@@ -178,9 +194,13 @@ LUA_CONSTRUCTOR(Window) {
 	w->handle = CreateWindowExW(0, L"Window", title, style_values[style] | WS_EX_CONTROLPARENT | DS_CONTROL, CW_USEDEFAULT, CW_USEDEFAULT, r.right, r.bottom, HWND_DESKTOP, NULL, hInstance, NULL);
 	if (style == 1)
 		SetWindowLong(w->handle, GWL_STYLE, GetWindowLongPtr(w->handle, GWL_STYLE) & ~WS_MAXIMIZEBOX);
+	else if (style == 3) {
+		DWM_WINDOW_CORNER_PREFERENCE d = DWMWCP_ROUND;
+		DwmSetWindowAttribute(w->handle, DWMWA_WINDOW_CORNER_PREFERENCE, &d, sizeof(DWM_WINDOW_CORNER_PREFERENCE));
+	}
   	AdjustWindowRectEx(&r, GetWindowLongPtr(w->handle, GWL_STYLE), FALSE, GetWindowLongPtr(w->handle, GWL_EXSTYLE));
 	SetWindowPos(w->handle, 0, 0, 0, r.right-r.left, r.bottom-r.top, SWP_HIDEWINDOW | SWP_NOMOVE);
-	free(title);
+	free(title); 
 	SetWindowLongPtr(w->handle, GWLP_USERDATA, (ULONG_PTR)w);
 	w->brush = GetSysColorBrush(COLOR_BTNFACE);
 	w->wtype = UIWindow;
@@ -232,7 +252,6 @@ LUA_METHOD(Window, loadtrayicon) {
 	}
 	Shell_NotifyIconW(action, nid);
 	return 0;
-
 }
 
 LUA_METHOD(Window, status) {
@@ -252,7 +271,8 @@ LUA_METHOD(Window, status) {
 		wchar_t **str = calloc(n,sizeof(wchar_t*));
 		LONG size = 0;
 		for(i = 0; i < n; i++) {
-			str[i] = lua_tolwstring(L, i+2, &len);
+			luaL_tolstring(L, i+2, NULL);
+			str[i] = lua_tolwstring(L, -1, &len);
 			if (i+1 == n)
 				parts[i] = -1;
 			else {
@@ -270,6 +290,7 @@ LUA_METHOD(Window, status) {
 		free(str);
 		free(parts);
 	}
+	BringWindowToTop(handle);
 	return 0;
 }
 

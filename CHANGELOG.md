@@ -1,6 +1,66 @@
------------------------- LuaRT CHANGELOG -------------------------
+## LuaRT v1.2.0 (Dec 11 2022)
+ 
+#### General
+- New ``modules\`` folder in the root directory to put your binary/Lua modules
+- Fixed *lots of* modules memory leaks (string iterator, ``embed`` module, ``COM`` module, ``ui`` module, ``Zip`` object)
 
-16/10/2022 -------- LuaRT 1.0.2 (bugfix)
+#### LuaRT installer
+- Updated installer with the new Progressbar widget and other cosmetics changes
+- Fixed uninstaller from deleting installation folder even if it's not empty anymore (Implements #36)
+
+#### LuaRT Studio
+- Updated LuaRT Studio with LuaRT 1.2.0 runtime
+- Fixed LuaRT-Studio x64 program crash when starting a new debug session
+
+#### LuaRT C API
+- Include files are now in the ``include\`` folder in the root directory
+- Library files are now in the ``lib\``
+- New `lua_registerevent()` and `lua_getevent()` for custom widgets events
+- New `lua_widgetdestructor()` to be called during custom Widget destruction
+- New `lua_widgetproc()` to register a custom Widget messages procedure
+- ``luart.h`` can now be included in C++ files easily
+- New header ``Widget.h`` for builtin and custom Widgets
+- Fixed compilation warnings when using GCC 12+
+
+- `lua_widgetfinalize()` renamed to `lua_widgetconstructor()`
+
+- Fixed `lua_checkcinstance()` error when using a non instance value
+- Fixed `lua_registerwidget()` not setting Widget properties properly
+
+#### `sys` module
+- New ``Directory.isempty`` property to check if a directory is empty
+
+- Fixed crash when getting a ``COM`` object
+- Fixed ``COM`` methods that might being called twice
+
+#### `console` module
+- Fixed console to be not closeable anymore when using desktop applications (Fixes #32)
+
+#### `ui` module
+- New ``Progressbar`` widget
+- New `onClick()` event for all Widgets
+- New rounded corners for ``"raw"`` windows on Windows 11
+- New ``Widget.align`` property (alignment now persists even if the size of the parent Widget changes)
+
+- Removed ``Widget:align()`` method (replaced by the new ``align`` property)
+- Updated ` Window:status()` to convert each argument to string
+- Updated ``ui.info()``, ``ui.error()``, ``ui.confirm()`` and ``ui.warn()`` to convert first argument to string
+- Updated ``ui.update()`` to use registered events for custom Widgets
+- Updated ``ui.List`` selection now spans to the entire row
+- Updated ``Edit:append()`` to scroll down automatically
+
+- Fixed changing a widget font attribute alter other widget fonts (Fixes #18)
+- Fixed ``Widget:center()`` not taking in count the presence of a Window statusbar
+- Fixed ``ui.Tab`` not drawn properly and background color when parent window background color changes
+- Fixed ``Label.fgcolor`` and ``Label.bgcolor`` properties ineffective when parent is a ``TabItem`` (Fixes #35)
+- Fixed Window statusbar not always showing on top of other widgets (Fixes #31)
+- Fixed ``Tree``, ``List``, ``Combobox`` and ``Tab`` that didn't check for a ``table`` argument in constructor
+- Fixed readonly ``Edit`` scrollbars that coouldn't be used
+- Fixed ``Picture`` constructor not accepting ``string`` or a ``File`` instance (Fixes #30)
+- Fixed ``Window`` finalizer not being called
+- Fixed taskbar showing ugly-resized Window icon when application is compiled with rtc -i option (Fixes #34)
+- Fixed ``Widget:center()`` not taking in count the presence of the window statusbar
+- Fixed selected ``TreeItem`` not staying higlighted
 
 ----------- General
 [ NEW ]			New examples img_viewer.wlua and binary.wlua
@@ -86,6 +146,7 @@
 [ BUG ]			Path registry key is no more corrupted during LuaRT installation
 [ BUG ]			ComboItem, TabItem, TreeItem, ListItem and MenuItem objects are no more available from ui module
 
+```LuaRT beta releases
 26/05/2022 -------- LuaRT 0.9.8
 [ NEW ]			New 'compatibility' LUA54.DLL runtime in bin\std, with better Lua 5.4 standard library compatibility (including io and os modules)
 				This runtime library provides better compatibility with Lua ecosystem (mobdebug, LuaSocket,...)				
