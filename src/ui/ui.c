@@ -25,6 +25,7 @@
 #include <vssym32.h>
 #include <wincodec.h>
 #include <shellapi.h>
+#include <rpcdce.h>
 
 #include "..\resources\resource.h"
 
@@ -512,13 +513,15 @@ LUA_METHOD(ui, fontdialog) {
 
 LUA_METHOD(ui, notify) {
 	int n = lua_gettop(L);
-	if (n == 5) {
+	if (n == 3) {
 		size_t len;
-		const char *title = lua_tolstring(L, 1, &len);
-		const char *message = lua_tolstring(L, 2, &len);
-		const char *tip = lua_tolstring(L, 3, &len);
-		const char *appIconFilePath = lua_tolstring(L, 4, &len);
-		lua_Number timeout = (LUAI_UACINT)lua_tointeger(L, 5);
+		//const int uID = lua_tointeger(L, 1);
+		const int dwMessage = lua_tointeger(L, 2);
+		const char *title = lua_tolstring(L, 3, &len);
+		const char *message = lua_tolstring(L, 4, &len);
+		//const char *tip = lua_tolstring(L, 3, &len);
+		//const char *appIconFilePath = lua_tolstring(L, 4, &len);
+		//lua_Number timeout = (LUAI_UACINT)lua_tointeger(L, 5);
 
 		/*
 		HWND hwnd = CreateWindowExW(
@@ -529,29 +532,36 @@ LUA_METHOD(ui, notify) {
             # hWndParent, hMenu, hInstance, lpParam
             None, None, wnd_class_ex.hInstance, None
         );*/
+		//UUID guidItem;
+		int retval = TRUE; //(UuidCreate(&guidItem) == RPC_S_OK);
 
-		NOTIFYICONDATA nid = {0};
-		nid.cbSize = sizeof(nid);
-		nid.hWnd = GetActiveWindow();
-		nid.uID = 0;
-		nid.uVersion = NOTIFYICON_VERSION_4;
-		nid.uFlags = NIF_ICON | NIF_INFO | NIF_TIP;
-		nid.dwInfoFlags = NIIF_LARGE_ICON | NIIF_INFO;
-		
-		// This text will be shown as the icon's tooltip.
-		strcpy(nid.szTip, tip); //L"LuaRT Notification");
-		strcpy(nid.szInfo, message);
-		strcpy(nid.szInfoTitle, title);
-		//StringCchCopy(nid.szInfoTitle, ARRAYSIZE(nid.szInfoTitle), title);
-		
-		// Load the icon for high DPI.
-		//appIconFilePath
-		//LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_SMALL), LIM_SMALL, &(nid.hIcon));
-		
-		// Show the notification.
-		Shell_NotifyIcon(NIM_ADD, &nid) ? S_OK : E_FAIL;
+		if(retval) {
+			NOTIFYICONDATA nid = {0};
+			nid.cbSize = sizeof(nid);
+			nid.hWnd = GetActiveWindow();
+			nid.uID = 9;
+			nid.uVersion = NOTIFYICON_VERSION_4;
+			nid.uFlags = NIF_ICON | NIF_INFO; // | NIF_SHOWTIP | NIF_TIP | NIF_GUID;
+			nid.dwInfoFlags = NIIF_LARGE_ICON | NIIF_INFO;
+			//nid.guidItem = guidItem;
+			
+			// This text will be shown as the icon's tooltip.
+			//strcpy(nid.szTip, "LuaRT Notification"); //tip);
+			strcpy(nid.szInfo, message);
+			strcpy(nid.szInfoTitle, title);
+			//StringCchCopy(nid.szInfoTitle, ARRAYSIZE(nid.szInfoTitle), title);
+			
+			// Load the icon for high DPI.
+			//appIconFilePath
+			//LoadIconMetric(hInst, MAKEINTRESOURCE(IDI_SMALL), LIM_SMALL, &(nid.hIcon));
+			
+			// Show the notification.
+			retval = Shell_NotifyIcon(dwMessage, &nid) ? TRUE : FALSE;
+			if(retval && dwMessage == NIM_ADD)
+				retval = Shell_NotifyIcon(NIM_SETVERSION, &nid);
+		}
 
-		lua_pushboolean(L, TRUE);
+		lua_pushboolean(L, retval);
 	}
 	else {
 		lua_pushboolean(L, FALSE);
